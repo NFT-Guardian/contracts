@@ -15,6 +15,7 @@ describe("Token Stop Loss", function () {
   let tokenStopLoss: TokenStopLossV2;
   let mockUniswapV3Factory: MockUniswapV3Factory;
   let stableCoin: MockERC20;
+  const supportedTokens: MockERC20[] = [];
 
   this.beforeAll(async () => {
     const MockV3AggregatorFactory = await ethers.getContractFactory(
@@ -55,7 +56,37 @@ describe("Token Stop Loss", function () {
     expect(data.answer).to.be.equal(ethers.utils.parseUnits("1885.22", 8));
   });
 
-  it("Should deploy some new tokens", async () => {});
+  it("Should deploy some new tokens", async () => {
+    const MockERC20Factory = await ethers.getContractFactory("MockERC20");
+    for (let i = 0; i < 10; i++) {
+      supportedTokens.push(
+        await MockERC20Factory.deploy(`Supported Token ${i}`, `SPT${i}`)
+      );
+      await supportedTokens[i].deployed();
+    }
+  });
+
+  it("Should add mock pools for all the tokens", async () => {
+    const MockUniswapV3PoolFactory = await ethers.getContractFactory(
+      "MockUniswapV3Pool"
+    );
+
+    for (const supportedToken of supportedTokens) {
+      const pool = await MockUniswapV3PoolFactory.deploy();
+      await mockUniswapV3Factory.setMockPool(
+        supportedToken.address,
+        stableCoin.address,
+        3000,
+        pool.address
+      );
+
+      console.log((Math.random() * 1000).toPrecision(5));
+
+      await pool.setMockPrice(
+        ethers.utils.parseEther((Math.random() * 1000).toPrecision(5))
+      );
+    }
+  });
 
   it("Should fetch the correct price of the token", async () => {});
 });
