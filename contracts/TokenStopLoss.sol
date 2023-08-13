@@ -3,6 +3,7 @@ pragma solidity ^0.8.17;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "./interfaces/AggregatorV3Interface.sol";
 import "./interfaces/UniswapV2Interfaces.sol";
 import "./interfaces/TokenStopLossInterface.sol";
@@ -12,7 +13,7 @@ import "./interfaces/TokenStopLossInterface.sol";
 /// @notice Explain to an end user what this does
 /// @dev Explain to a developer any extra details
 /// @custom:security-contact contact@yashgoyal.dev
-contract TokenStopLoss is TokenStopLossInterface, Ownable {
+contract TokenStopLoss is TokenStopLossInterface, Ownable, EIP712 {
     // Instance of the Chainlink price feed contract
     AggregatorV3Interface internal priceFeed;
     IUniswapV2Router public uniswapV2Router;
@@ -21,12 +22,14 @@ contract TokenStopLoss is TokenStopLossInterface, Ownable {
     address stableCoin;
 
     constructor(
-        address eth_usd_feed,
+        string memory _name,
+        string memory _version,
+        address _eth_usd_feed,
         address _uniswapV2Router,
         address _uniswapV2Factory,
         address _stableCoin
-    ) {
-        priceFeed = AggregatorV3Interface(eth_usd_feed);
+    ) EIP712(_name, _version) {
+        priceFeed = AggregatorV3Interface(_eth_usd_feed);
         uniswapV2Router = IUniswapV2Router(_uniswapV2Router);
         uniswapV2Factory = IUniswapV2Factory(_uniswapV2Factory);
         stableCoin = _stableCoin;
@@ -49,9 +52,27 @@ contract TokenStopLoss is TokenStopLossInterface, Ownable {
         address[] calldata tokenContracts,
         uint256[] memory tokenAmounts,
         int stopLoss,
-        bytes32 userSignature
+        bytes memory userSignature
     ) public {
         // check the signature
+        bytes32 digest = _hashTypedDataV4(
+            keccak256(
+                abi.encode(
+                    keccak256(
+                        "SellToken(address owner,address[] tokenContracts,uint256[] tokenAmounts,int stopLoss)"
+                    ),
+                    msg.sender,
+                    tokenContracts,
+                    tokenAmounts,
+                    stopLoss
+                )
+            )
+        );
+
+        address signer = ECDSA.recover(digest, userSignature);
+
+        if (signer != msg.sender) revert InvalidSignature();
+
         // check if stop loss is hit using the chainlink price feed
         if (_getLatestETHPrice() < stopLoss) revert StopLossNotHit();
 
